@@ -9,7 +9,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
     
     companion object {
         private const val DATABASE_NAME = "campcrap.db"
-        private const val DATABASE_VERSION = 6
+        private const val DATABASE_VERSION = 7
         
         // People table
         const val TABLE_PEOPLE = "people"
@@ -24,6 +24,10 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         const val COLUMN_YEAR = "year"
         const val COLUMN_SKIPPING = "skipping"
         const val COLUMN_IS_INFRASTRUCTURE = "is_infrastructure"
+        const val COLUMN_YEARS_ATTENDED = "years_attended"
+        const val COLUMN_HAS_TICKET_CURRENT_YEAR = "has_ticket_current_year"
+        const val COLUMN_PAID_DUES_CURRENT_YEAR = "paid_dues_current_year"
+        const val COLUMN_PHOTO_PATH = "photo_path"
         
         // Locations table
         const val TABLE_LOCATIONS = "locations"
@@ -58,7 +62,11 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                 $COLUMN_NOTES TEXT,
                 $COLUMN_YEAR TEXT NOT NULL,
                 $COLUMN_SKIPPING INTEGER DEFAULT 0,
-                $COLUMN_IS_INFRASTRUCTURE INTEGER DEFAULT 0
+                $COLUMN_IS_INFRASTRUCTURE INTEGER DEFAULT 0,
+                $COLUMN_YEARS_ATTENDED TEXT DEFAULT '',
+                $COLUMN_HAS_TICKET_CURRENT_YEAR INTEGER DEFAULT 0,
+                $COLUMN_PAID_DUES_CURRENT_YEAR INTEGER DEFAULT 0,
+                $COLUMN_PHOTO_PATH TEXT
             )
         """.trimIndent()
         
@@ -137,6 +145,13 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         if (oldVersion < 6) {
             db.execSQL("ALTER TABLE $TABLE_ITEMS ADD COLUMN $ITEM_REMOVAL_STATUS TEXT DEFAULT 'active'")
         }
+        // Add camper tracking fields if upgrading from version 6
+        if (oldVersion < 7) {
+            db.execSQL("ALTER TABLE $TABLE_PEOPLE ADD COLUMN $COLUMN_YEARS_ATTENDED TEXT DEFAULT ''")
+            db.execSQL("ALTER TABLE $TABLE_PEOPLE ADD COLUMN $COLUMN_HAS_TICKET_CURRENT_YEAR INTEGER DEFAULT 0")
+            db.execSQL("ALTER TABLE $TABLE_PEOPLE ADD COLUMN $COLUMN_PAID_DUES_CURRENT_YEAR INTEGER DEFAULT 0")
+            db.execSQL("ALTER TABLE $TABLE_PEOPLE ADD COLUMN $COLUMN_PHOTO_PATH TEXT")
+        }
     }
     
     fun addPerson(
@@ -148,7 +163,11 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         campName: String = "",
         notes: String = "",
         year: String,
-        isInfrastructure: Boolean = false
+        isInfrastructure: Boolean = false,
+        yearsAttended: String = "",
+        hasTicketCurrentYear: Boolean = false,
+        paidDuesCurrentYear: Boolean = false,
+        photoPath: String? = null
     ): Long {
         val db = writableDatabase
         val values = ContentValues().apply {
@@ -161,6 +180,10 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             put(COLUMN_NOTES, notes)
             put(COLUMN_YEAR, year)
             put(COLUMN_IS_INFRASTRUCTURE, if (isInfrastructure) 1 else 0)
+            put(COLUMN_YEARS_ATTENDED, yearsAttended)
+            put(COLUMN_HAS_TICKET_CURRENT_YEAR, if (hasTicketCurrentYear) 1 else 0)
+            put(COLUMN_PAID_DUES_CURRENT_YEAR, if (paidDuesCurrentYear) 1 else 0)
+            put(COLUMN_PHOTO_PATH, photoPath)
         }
         
         return db.insert(TABLE_PEOPLE, null, values)
@@ -211,7 +234,11 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                         notes = it.getString(it.getColumnIndexOrThrow(COLUMN_NOTES)) ?: "",
                         year = it.getString(it.getColumnIndexOrThrow(COLUMN_YEAR)),
                         skipping = it.getInt(it.getColumnIndexOrThrow(COLUMN_SKIPPING)) == 1,
-                        isInfrastructure = it.getInt(it.getColumnIndexOrThrow(COLUMN_IS_INFRASTRUCTURE)) == 1
+                        isInfrastructure = it.getInt(it.getColumnIndexOrThrow(COLUMN_IS_INFRASTRUCTURE)) == 1,
+                        yearsAttended = it.getString(it.getColumnIndexOrThrow(COLUMN_YEARS_ATTENDED)) ?: "",
+                        hasTicketCurrentYear = it.getInt(it.getColumnIndexOrThrow(COLUMN_HAS_TICKET_CURRENT_YEAR)) == 1,
+                        paidDuesCurrentYear = it.getInt(it.getColumnIndexOrThrow(COLUMN_PAID_DUES_CURRENT_YEAR)) == 1,
+                        photoPath = it.getString(it.getColumnIndexOrThrow(COLUMN_PHOTO_PATH))
                     )
                 )
             }
@@ -229,7 +256,11 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         exitDate: String = "",
         campName: String = "",
         notes: String = "",
-        skipping: Boolean = false
+        skipping: Boolean = false,
+        yearsAttended: String? = null,
+        hasTicketCurrentYear: Boolean? = null,
+        paidDuesCurrentYear: Boolean? = null,
+        photoPath: String? = null
     ): Boolean {
         val db = writableDatabase
         val values = ContentValues().apply {
@@ -241,16 +272,10 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             put(COLUMN_CAMP_NAME, campName)
             put(COLUMN_NOTES, notes)
             put(COLUMN_SKIPPING, if (skipping) 1 else 0)
-        }
-        
-        val result = db.update(TABLE_PEOPLE, values, "$COLUMN_ID = ?", arrayOf(id.toString()))
-        return result > 0
-    }
-    
-    fun setPersonSkipping(id: Long, skipping: Boolean): Boolean {
-        val db = writableDatabase
-        val values = ContentValues().apply {
-            put(COLUMN_SKIPPING, if (skipping) 1 else 0)
+            yearsAttended?.let { put(COLUMN_YEARS_ATTENDED, it) }
+            hasTicketCurrentYear?.let { put(COLUMN_HAS_TICKET_CURRENT_YEAR, if (it) 1 else 0) }
+            paidDuesCurrentYear?.let { put(COLUMN_PAID_DUES_CURRENT_YEAR, if (it) 1 else 0) }
+            photoPath?.let { put(COLUMN_PHOTO_PATH, it) }
         }
         
         val result = db.update(TABLE_PEOPLE, values, "$COLUMN_ID = ?", arrayOf(id.toString()))
@@ -282,11 +307,25 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                     notes = it.getString(it.getColumnIndexOrThrow(COLUMN_NOTES)) ?: "",
                     year = it.getString(it.getColumnIndexOrThrow(COLUMN_YEAR)),
                     skipping = it.getInt(it.getColumnIndexOrThrow(COLUMN_SKIPPING)) == 1,
-                    isInfrastructure = it.getInt(it.getColumnIndexOrThrow(COLUMN_IS_INFRASTRUCTURE)) == 1
+                    isInfrastructure = it.getInt(it.getColumnIndexOrThrow(COLUMN_IS_INFRASTRUCTURE)) == 1,
+                    yearsAttended = it.getString(it.getColumnIndexOrThrow(COLUMN_YEARS_ATTENDED)) ?: "",
+                    hasTicketCurrentYear = it.getInt(it.getColumnIndexOrThrow(COLUMN_HAS_TICKET_CURRENT_YEAR)) == 1,
+                    paidDuesCurrentYear = it.getInt(it.getColumnIndexOrThrow(COLUMN_PAID_DUES_CURRENT_YEAR)) == 1,
+                    photoPath = it.getString(it.getColumnIndexOrThrow(COLUMN_PHOTO_PATH))
                 )
             }
         }
         return null
+    }
+    
+    fun setPersonSkipping(id: Long, skipping: Boolean): Boolean {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COLUMN_SKIPPING, if (skipping) 1 else 0)
+        }
+        
+        val result = db.update(TABLE_PEOPLE, values, "$COLUMN_ID = ?", arrayOf(id.toString()))
+        return result > 0
     }
     
     fun ensureInfrastructureCamper(year: String): Long {
@@ -642,7 +681,11 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                         notes = it.getString(it.getColumnIndexOrThrow(COLUMN_NOTES)) ?: "",
                         year = it.getString(it.getColumnIndexOrThrow(COLUMN_YEAR)),
                         skipping = it.getInt(it.getColumnIndexOrThrow(COLUMN_SKIPPING)) == 1,
-                        isInfrastructure = it.getInt(it.getColumnIndexOrThrow(COLUMN_IS_INFRASTRUCTURE)) == 1
+                        isInfrastructure = it.getInt(it.getColumnIndexOrThrow(COLUMN_IS_INFRASTRUCTURE)) == 1,
+                        yearsAttended = it.getString(it.getColumnIndexOrThrow(COLUMN_YEARS_ATTENDED)) ?: "",
+                        hasTicketCurrentYear = it.getInt(it.getColumnIndexOrThrow(COLUMN_HAS_TICKET_CURRENT_YEAR)) == 1,
+                        paidDuesCurrentYear = it.getInt(it.getColumnIndexOrThrow(COLUMN_PAID_DUES_CURRENT_YEAR)) == 1,
+                        photoPath = it.getString(it.getColumnIndexOrThrow(COLUMN_PHOTO_PATH))
                     )
                 )
             }
@@ -730,7 +773,11 @@ data class Person(
     val notes: String,
     val year: String,
     val skipping: Boolean = false,
-    val isInfrastructure: Boolean = false
+    val isInfrastructure: Boolean = false,
+    val yearsAttended: String = "",
+    val hasTicketCurrentYear: Boolean = false,
+    val paidDuesCurrentYear: Boolean = false,
+    val photoPath: String? = null
 )
 
 data class Location(

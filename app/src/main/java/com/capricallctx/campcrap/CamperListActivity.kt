@@ -11,21 +11,28 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.capricallctx.campcrap.ui.theme.CampCrapTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class CamperListActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,10 +60,10 @@ fun CamperListScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dbHelper = remember { DatabaseHelper(context) }
-    
+
     var campers by remember { mutableStateOf<List<Person>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    
+
     LaunchedEffect(Unit) {
         scope.launch {
             campers = withContext(Dispatchers.IO) {
@@ -65,7 +72,7 @@ fun CamperListScreen(
             isLoading = false
         }
     }
-    
+
     // Refresh data when returning to this screen
     LaunchedEffect(context) {
         scope.launch {
@@ -78,7 +85,7 @@ fun CamperListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Column {
                         Text("Camp Crap ${Constants.CURRENT_YEAR}")
                         Text(
@@ -160,21 +167,10 @@ fun CamperListScreen(
                                     val intent = Intent(context, EditCamperActivity::class.java)
                                     intent.putExtra("CAMPER_ID", person.id)
                                     context.startActivity(intent)
-                                },
-                                onSkipToggle = { person ->
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) {
-                                            dbHelper.setPersonSkipping(person.id, !person.skipping)
-                                        }
-                                        // Refresh the list
-                                        campers = withContext(Dispatchers.IO) {
-                                            dbHelper.getPeopleForYear(Constants.CURRENT_YEAR)
-                                        }
-                                    }
                                 }
                             )
                         }
-                        
+
                         // Add some space at the bottom for the FAB
                         item {
                             Spacer(modifier = Modifier.height(80.dp))
@@ -189,18 +185,21 @@ fun CamperListScreen(
 @Composable
 fun CamperCard(
     camper: Person,
-    onEdit: (Person) -> Unit,
-    onSkipToggle: (Person) -> Unit
+    onEdit: (Person) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (camper.skipping) 
-                MaterialTheme.colorScheme.surfaceVariant 
-            else 
-                MaterialTheme.colorScheme.surface
+            containerColor = when {
+                camper.hasTicketCurrentYear && camper.paidDuesCurrentYear && !camper.skipping ->
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                camper.skipping ->
+                    MaterialTheme.colorScheme.surfaceVariant
+                else ->
+                    MaterialTheme.colorScheme.surface
+            }
         )
     ) {
         Column(
@@ -213,6 +212,27 @@ fun CamperCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
+                // Photo section
+                if (camper.photoPath != null && File(camper.photoPath).exists()) {
+                    AsyncImage(
+                        model = camper.photoPath,
+                        contentDescription = "Camper photo",
+                        modifier = Modifier
+                            .size(60.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = "No photo",
+                        modifier = Modifier.size(60.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -220,23 +240,78 @@ fun CamperCard(
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        if (camper.skipping) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.tertiary
-                            ) {
-                                Text(
-                                    text = "SKIPPING",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onTertiary,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        when {
+                            camper.skipping -> {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.tertiary
+                                ) {
+                                    Text(
+                                        text = "SKIPPING",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onTertiary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            camper.hasTicketCurrentYear && camper.paidDuesCurrentYear -> {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primary
+                                ) {
+                                    Text(
+                                        text = "✓ READY",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
-                    
+
+                    // Status icons row
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        // Ticket status
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Ticket status",
+                            modifier = Modifier.size(16.dp),
+                            tint = if (camper.hasTicketCurrentYear)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Dues status
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = "Dues status",
+                            modifier = Modifier.size(16.dp),
+                            tint = if (camper.paidDuesCurrentYear)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+
+                        if (camper.yearsAttended.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Years: ${camper.yearsAttended.split(",").size}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
                     if (camper.email.isNotEmpty()) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -257,29 +332,18 @@ fun CamperCard(
                         }
                     }
                 }
-                
-                Row {
-                    IconButton(
-                        onClick = { onEdit(camper) }
-                    ) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "Edit camper",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    
-                    TextButton(
-                        onClick = { onSkipToggle(camper) }
-                    ) {
-                        Text(
-                            text = if (camper.skipping) "Include" else "Skip",
-                            fontSize = 12.sp
-                        )
-                    }
+
+                IconButton(
+                    onClick = { onEdit(camper) }
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit camper",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
-            
+
             if (camper.entryDate.isNotEmpty() || camper.exitDate.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -300,7 +364,7 @@ fun CamperCard(
                             )
                         }
                     }
-                    
+
                     if (camper.exitDate.isNotEmpty()) {
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
@@ -317,7 +381,7 @@ fun CamperCard(
                     }
                 }
             }
-            
+
             if (camper.notes.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(

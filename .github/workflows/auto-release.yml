@@ -60,7 +60,12 @@ jobs:
     - name: Set up signing config
       run: |
         echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
+    - name: Build debug AAB (unsigned)
+      run: ./gradlew bundleDebug
+
     - name: Build and sign release AAB
+      continue-on-error: true
+      id: build_release_aab
       env:
           SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -72,16 +77,29 @@ jobs:
     - name: Check if release should be created
       id: should_release
       run: |
-        if [[ -f "app/build/outputs/bundle/release/app-release.aab" || "${{ github.event.inputs.force_release }}" == "true" ]]; then
+        if [[ -f "app/build/outputs/bundle/release/app-release.aab" || -f "app/build/outputs/bundle/debug/app-debug.aab" || "${{ github.event.inputs.force_release }}" == "true" ]]; then
           echo "create_release=true" >> $GITHUB_OUTPUT
-          echo "Will create release"
+          echo "Will create release (found AAB or forced)"
+          
+          # Determine primary AAB file for upload
+          if [[ -f "app/build/outputs/bundle/release/app-release.aab" ]]; then
+            echo "primary_aab=app/build/outputs/bundle/release/app-release.aab" >> $GITHUB_OUTPUT
+            echo "aab_type=release" >> $GITHUB_OUTPUT
+            echo "Using release AAB"
+          else
+            echo "primary_aab=app/build/outputs/bundle/debug/app-debug.aab" >> $GITHUB_OUTPUT
+            echo "aab_type=debug" >> $GITHUB_OUTPUT
+            echo "Using debug AAB"
+          fi
         else
           echo "create_release=false" >> $GITHUB_OUTPUT
           echo "Skipping release - no AAB found and not forced"
         fi
     - name: Sign AAB
-      uses: r0adkll/sign-android-release@v1
+      if: steps.should_release.outputs.create_release == 'true' && steps.should_release.outputs.aab_type == 'release'
+      continue-on-error: true
       id: sign_app
+      uses: r0adkll/sign-android-release@v1
       with:
             releaseDirectory: app/build/outputs/bundle/release
             signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -90,6 +108,9 @@ jobs:
             keyPassword: ${{ secrets.KEY_PASSWORD }}
 
     - name: Upload AAB to Play Store (Internal Track)
+      if: steps.sign_app.outputs.signedReleaseFile != ''
+      continue-on-error: true
+      id: play_store_upload
       uses: r0adkll/upload-google-play@v1
       with:
         serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
@@ -229,8 +250,20 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: app/build/outputs/bundle/release/app-release.aab
-        asset_name: CampCrap-v${{ env.VERSION_NAME }}.aab
+        asset_path: ${{ steps.should_release.outputs.primary_aab }}
+        asset_name: CampCrap-v${{ env.VERSION_NAME }}-${{ steps.should_release.outputs.aab_type }}.aab
+        asset_content_type: application/octet-stream
+
+    - name: Upload Debug AAB (if available)
+      if: steps.should_release.outputs.create_release == 'true' && steps.should_release.outputs.aab_type == 'release'
+      continue-on-error: true
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: app/build/outputs/bundle/debug/app-debug.aab
+        asset_name: CampCrap-v${{ env.VERSION_NAME }}-debug.aab
         asset_content_type: application/octet-stream
 
     - name: Create release summary

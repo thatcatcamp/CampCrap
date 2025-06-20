@@ -1,42 +1,113 @@
 package com.capricallctx.campcrap
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import coil.compose.AsyncImage
 import com.capricallctx.campcrap.ui.theme.CampCrapTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 
 class EditCamperActivity : ComponentActivity() {
+
+    private lateinit var photoUri: Uri
+    private var photoFile: File? = null
+    private var onPhotoTaken: (() -> Unit)? = null
+
+    private val requestCameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            launchCamera()
+        }
+    }
+
+    private val takePictureLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            onPhotoTaken?.invoke()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         val camperId = intent.getLongExtra("CAMPER_ID", -1L)
         if (camperId == -1L) {
             finish()
             return
         }
-        
+
         setContent {
             CampCrapTheme {
                 EditCamperScreen(
                     camperId = camperId,
                     onBack = { finish() },
-                    onSaved = { finish() }
+                    onSaved = { finish() },
+                    onRequestCamera = { callback ->
+                        onPhotoTaken = callback
+                        requestCameraPermission()
+                    },
+                    getPhotoFile = { photoFile }
                 )
             }
         }
+    }
+
+    private fun requestCameraPermission() {
+        when {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                launchCamera()
+            }
+            else -> {
+                requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+
+    private fun launchCamera() {
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        photoFile = File(filesDir, "CAMPER_${timeStamp}.jpg")
+        photoUri = FileProvider.getUriForFile(
+            this,
+            "${applicationContext.packageName}.provider",
+            photoFile!!
+        )
+        takePictureLauncher.launch(photoUri)
     }
 }
 
@@ -45,15 +116,17 @@ class EditCamperActivity : ComponentActivity() {
 fun EditCamperScreen(
     camperId: Long,
     onBack: () -> Unit,
-    onSaved: () -> Unit
+    onSaved: () -> Unit,
+    onRequestCamera: (((() -> Unit)) -> Unit),
+    getPhotoFile: () -> File?
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dbHelper = remember { DatabaseHelper(context) }
-    
+
     var camper by remember { mutableStateOf<Person?>(null) }
     var isLoading by remember { mutableStateOf(true) }
-    
+
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var realName by remember { mutableStateOf("") }
@@ -62,10 +135,27 @@ fun EditCamperScreen(
     var campName by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var skipping by remember { mutableStateOf(false) }
-    
+    var yearsAttended by remember { mutableStateOf("") }
+    var hasTicketCurrentYear by remember { mutableStateOf(false) }
+    var paidDuesCurrentYear by remember { mutableStateOf(false) }
+    var currentPhotoFile by remember { mutableStateOf<File?>(null) }
+    var photoRefresh by remember { mutableStateOf(0) }
+    var originalPhotoPath by remember { mutableStateOf<String?>(null) }
+
     var showSuccessMessage by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
-    
+
+    // Update photo file when photoRefresh changes
+    LaunchedEffect(photoRefresh) {
+        currentPhotoFile = getPhotoFile()
+    }
+
+    val takePhoto = {
+        onRequestCamera {
+            photoRefresh++
+        }
+    }
+
     LaunchedEffect(camperId) {
         scope.launch {
             val person = withContext(Dispatchers.IO) {
@@ -81,11 +171,18 @@ fun EditCamperScreen(
                 campName = it.campName
                 notes = it.notes
                 skipping = it.skipping
+                yearsAttended = it.yearsAttended
+                hasTicketCurrentYear = it.hasTicketCurrentYear
+                paidDuesCurrentYear = it.paidDuesCurrentYear
+                originalPhotoPath = it.photoPath
+                if (it.photoPath != null) {
+                    currentPhotoFile = File(it.photoPath)
+                }
             }
             isLoading = false
         }
     }
-    
+
     if (showSuccessMessage) {
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(1500)
@@ -128,10 +225,11 @@ fun EditCamperScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                
+
                 if (showSuccessMessage) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -144,28 +242,93 @@ fun EditCamperScreen(
                         )
                     }
                 }
-                
+
+                // Photo section
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Photo",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (currentPhotoFile?.exists() == true) {
+                            AsyncImage(
+                                model = currentPhotoFile,
+                                contentDescription = "Camper photo",
+                                modifier = Modifier
+                                    .size(150.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                TextButton(onClick = takePhoto) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Retake Photo")
+                                }
+                                if (originalPhotoPath != null) {
+                                    TextButton(
+                                        onClick = {
+                                            currentPhotoFile = if (originalPhotoPath != null) File(originalPhotoPath!!) else null
+                                            photoRefresh++
+                                        }
+                                    ) {
+                                        Text("Restore Original")
+                                    }
+                                }
+                            }
+                        } else {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = "No photo",
+                                modifier = Modifier.size(100.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(onClick = takePhoto) {
+                                Icon(Icons.Default.Add, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Add Photo")
+                            }
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Name *") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
                     label = { Text("Email") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 OutlinedTextField(
                     value = realName,
                     onValueChange = { realName = it },
                     label = { Text("Real Name") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -176,7 +339,7 @@ fun EditCamperScreen(
                         label = { Text("Entry Date") },
                         modifier = Modifier.weight(1f)
                     )
-                    
+
                     OutlinedTextField(
                         value = exitDate,
                         onValueChange = { exitDate = it },
@@ -184,14 +347,14 @@ fun EditCamperScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                
+
                 OutlinedTextField(
                     value = campName,
                     onValueChange = { campName = it },
                     label = { Text("Camp Name") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
@@ -200,25 +363,124 @@ fun EditCamperScreen(
                     minLines = 2,
                     maxLines = 4
                 )
-                
-                Row(
+
+                OutlinedTextField(
+                    value = yearsAttended,
+                    onValueChange = { yearsAttended = it },
+                    label = { Text("Years Attended (e.g., 2020,2021,2022,2024)") },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    placeholder = { Text("Comma-separated years") }
+                )
+
+                // Current Year Status Section
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    Text(
-                        text = "Skipping this year",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Switch(
-                        checked = skipping,
-                        onCheckedChange = { skipping = it }
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "2025 Status",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Has Ticket",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Switch(
+                                checked = hasTicketCurrentYear,
+                                onCheckedChange = { hasTicketCurrentYear = it }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Paid Dues",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Switch(
+                                checked = paidDuesCurrentYear,
+                                onCheckedChange = { paidDuesCurrentYear = it }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = if (skipping) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Skipping this year",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Switch(
+                                checked = skipping,
+                                onCheckedChange = { skipping = it }
+                            )
+                        }
+                    }
                 }
-                
+
                 Spacer(modifier = Modifier.weight(1f))
-                
+
                 Button(
                     onClick = {
                         scope.launch {
@@ -233,7 +495,11 @@ fun EditCamperScreen(
                                     exitDate = exitDate,
                                     campName = campName,
                                     notes = notes,
-                                    skipping = skipping
+                                    skipping = skipping,
+                                    yearsAttended = yearsAttended,
+                                    hasTicketCurrentYear = hasTicketCurrentYear,
+                                    paidDuesCurrentYear = paidDuesCurrentYear,
+                                    photoPath = currentPhotoFile?.absolutePath
                                 )
                             }
                             isSaving = false
