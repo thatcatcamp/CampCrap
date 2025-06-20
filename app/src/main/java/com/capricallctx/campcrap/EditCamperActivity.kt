@@ -1,3 +1,19 @@
+/*
+ * Copyright 2025 CAT Camp
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.capricallctx.campcrap
 
 import android.Manifest
@@ -27,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.DateRange
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
@@ -144,6 +161,8 @@ fun EditCamperScreen(
 
     var showSuccessMessage by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+    var showEntryDatePicker by remember { mutableStateOf(false) }
+    var showExitDatePicker by remember { mutableStateOf(false) }
 
     // Update photo file when photoRefresh changes
     LaunchedEffect(photoRefresh) {
@@ -335,16 +354,30 @@ fun EditCamperScreen(
                 ) {
                     OutlinedTextField(
                         value = entryDate,
-                        onValueChange = { entryDate = it },
+                        onValueChange = { },
                         label = { Text("Entry Date") },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        readOnly = true,
+                        trailingIcon = {
+                            IconButton(onClick = { showEntryDatePicker = true }) {
+                                Icon(Icons.Default.DateRange, contentDescription = "Select entry date")
+                            }
+                        },
+                        placeholder = { Text("YYYY-MM-DD") }
                     )
 
                     OutlinedTextField(
                         value = exitDate,
-                        onValueChange = { exitDate = it },
+                        onValueChange = { },
                         label = { Text("Exit Date") },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        readOnly = true,
+                        trailingIcon = {
+                            IconButton(onClick = { showExitDatePicker = true }) {
+                                Icon(Icons.Default.DateRange, contentDescription = "Select exit date")
+                            }
+                        },
+                        placeholder = { Text("YYYY-MM-DD") }
                     )
                 }
 
@@ -522,5 +555,79 @@ fun EditCamperScreen(
                 }
             }
         }
+    }
+
+    // Entry Date Picker
+    if (showEntryDatePicker) {
+        DatePickerDialog(
+            initialDate = entryDate,
+            onDateSelected = { selectedDate ->
+                entryDate = selectedDate
+                showEntryDatePicker = false
+            },
+            onDismiss = { showEntryDatePicker = false }
+        )
+    }
+
+    // Exit Date Picker
+    if (showExitDatePicker) {
+        DatePickerDialog(
+            initialDate = exitDate,
+            onDateSelected = { selectedDate ->
+                exitDate = selectedDate
+                showExitDatePicker = false
+            },
+            onDismiss = { showExitDatePicker = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DatePickerDialog(
+    initialDate: String,
+    onDateSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val calendar = Calendar.getInstance()
+    
+    // Parse initial date if provided
+    if (initialDate.isNotEmpty()) {
+        try {
+            dateFormat.parse(initialDate)?.let { date ->
+                calendar.time = date
+            }
+        } catch (e: Exception) {
+            // Use current date if parsing fails
+        }
+    }
+    
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = calendar.timeInMillis
+    )
+    
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                datePickerState.selectedDateMillis?.let { millis ->
+                    val selectedCalendar = Calendar.getInstance().apply {
+                        timeInMillis = millis
+                    }
+                    val formattedDate = dateFormat.format(selectedCalendar.time)
+                    onDateSelected(formattedDate)
+                }
+            }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    ) {
+        DatePicker(state = datePickerState)
     }
 }
