@@ -34,6 +34,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -57,11 +58,13 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class AddItemActivity : ComponentActivity() {
-    
+
     private lateinit var photoUri: Uri
     private var photoFile: File? = null
     private var onPhotoTaken: (() -> Unit)? = null
-    
+    private lateinit var nfcHelper: NFCHelper
+    private var onNfcScanned: ((String) -> Unit)? = null
+
     private val requestCameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -69,7 +72,7 @@ class AddItemActivity : ComponentActivity() {
             launchCamera()
         }
     }
-    
+
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { success ->
@@ -78,24 +81,34 @@ class AddItemActivity : ComponentActivity() {
             onPhotoTaken?.invoke()
         }
     }
-    
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        nfcHelper = NFCHelper(this)
+        nfcHelper.onTagScanned = { uid ->
+            onNfcScanned?.invoke(uid)
+        }
+
         setContent {
             CampCrapTheme {
                 AddItemScreen(
                     onBack = { finish() },
-                    onRequestCamera = { callback -> 
+                    onRequestCamera = { callback ->
                         onPhotoTaken = callback
-                        requestCameraPermission() 
+                        requestCameraPermission()
                     },
                     getPhotoFile = { photoFile },
-                    onItemSaved = { finish() }
+                    onItemSaved = { finish() },
+                    nfcHelper = nfcHelper,
+                    onNfcScanned = { callback ->
+                        onNfcScanned = callback
+                    }
                 )
             }
         }
     }
-    
+
     private fun requestCameraPermission() {
         when {
             ContextCompat.checkSelfPermission(
@@ -109,7 +122,7 @@ class AddItemActivity : ComponentActivity() {
             }
         }
     }
-    
+
     private fun launchCamera() {
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         photoFile = File(filesDir, "IMG_${timeStamp}.jpg")
@@ -120,6 +133,21 @@ class AddItemActivity : ComponentActivity() {
         )
         takePictureLauncher.launch(photoUri)
     }
+
+    override fun onResume() {
+        super.onResume()
+        nfcHelper.enableForegroundDispatch()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        nfcHelper.disableForegroundDispatch()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        nfcHelper.handleNewIntent(intent)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -128,12 +156,14 @@ fun AddItemScreen(
     onBack: () -> Unit,
     onRequestCamera: (((() -> Unit)) -> Unit),
     getPhotoFile: () -> File?,
-    onItemSaved: () -> Unit
+    onItemSaved: () -> Unit,
+    nfcHelper: NFCHelper,
+    onNfcScanned: ((String) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dbHelper = remember { DatabaseHelper(context) }
-    
+
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var selectedCamper by remember { mutableStateOf<Person?>(null) }
@@ -142,23 +172,37 @@ fun AddItemScreen(
     var showLocationDialog by remember { mutableStateOf(false) }
     var showSuccessMessage by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
-    
+
     var campers by remember { mutableStateOf<List<Person>>(emptyList()) }
     var locations by remember { mutableStateOf<List<Location>>(emptyList()) }
     var currentPhotoFile by remember { mutableStateOf<File?>(null) }
     var photoRefresh by remember { mutableStateOf(0) }
-    
+    var nfcUid by remember { mutableStateOf<String?>(null) }
+    var isNfcScanning by remember { mutableStateOf(false) }
+
     // Update photo file when photoRefresh changes
     LaunchedEffect(photoRefresh) {
         currentPhotoFile = getPhotoFile()
     }
-    
+
     val takePhoto = {
         onRequestCamera {
             photoRefresh++ // Trigger recomposition when photo is taken
         }
     }
-    
+
+    val startNfcScan = {
+        if (nfcHelper.isNFCSupported()) {
+            if (nfcHelper.isNFCEnabled()) {
+                isNfcScanning = true
+                onNfcScanned { uid ->
+                    nfcUid = uid
+                    isNfcScanning = false
+                }
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         scope.launch {
             withContext(Dispatchers.IO) {
@@ -167,14 +211,14 @@ fun AddItemScreen(
             }
         }
     }
-    
+
     if (showSuccessMessage) {
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(1500)
             onItemSaved()
         }
     }
-    
+
     if (showCamperDialog) {
         CamperSelectionDialog(
             campers = campers,
@@ -185,7 +229,7 @@ fun AddItemScreen(
             }
         )
     }
-    
+
     if (showLocationDialog) {
         LocationSelectionDialog(
             locations = locations,
@@ -217,7 +261,7 @@ fun AddItemScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            
+
             if (showSuccessMessage) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -230,7 +274,7 @@ fun AddItemScreen(
                     )
                 }
             }
-            
+
             // Photo section
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -247,9 +291,9 @@ fun AddItemScreen(
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium
                     )
-                    
+
                     Spacer(modifier = Modifier.height(12.dp))
-                    
+
                     // Display photo if available
                         if (currentPhotoFile?.exists() == true) {
                             AsyncImage(
@@ -279,14 +323,14 @@ fun AddItemScreen(
                         }
                 }
             }
-            
+
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 label = { Text("Item Name *") },
                 modifier = Modifier.fillMaxWidth()
             )
-            
+
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -295,7 +339,7 @@ fun AddItemScreen(
                 minLines = 2,
                 maxLines = 4
             )
-            
+
             // Camper selection
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -319,9 +363,9 @@ fun AddItemScreen(
                             text = selectedCamper?.name ?: "Select owner",
                             fontSize = 16.sp,
                             fontWeight = if (selectedCamper != null) FontWeight.Medium else FontWeight.Normal,
-                            color = if (selectedCamper != null) 
-                                MaterialTheme.colorScheme.onSurface 
-                            else 
+                            color = if (selectedCamper != null)
+                                MaterialTheme.colorScheme.onSurface
+                            else
                                 MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -332,7 +376,7 @@ fun AddItemScreen(
                     )
                 }
             }
-            
+
             // Location selection
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -356,9 +400,9 @@ fun AddItemScreen(
                             text = selectedLocation?.name ?: "Select location",
                             fontSize = 16.sp,
                             fontWeight = if (selectedLocation != null) FontWeight.Medium else FontWeight.Normal,
-                            color = if (selectedLocation != null) 
-                                MaterialTheme.colorScheme.onSurface 
-                            else 
+                            color = if (selectedLocation != null)
+                                MaterialTheme.colorScheme.onSurface
+                            else
                                 MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -369,9 +413,95 @@ fun AddItemScreen(
                     )
                 }
             }
-            
+
+            // NFC section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "NFC Tag",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (nfcUid != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp)
+                            ) {
+                                Text(
+                                    text = "NFC UID: $nfcUid",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(onClick = { nfcUid = null }) {
+                            Text("Clear NFC")
+                        }
+                    } else {
+                        if (!nfcHelper.isNFCSupported()) {
+                            Text(
+                                text = "NFC not supported on this device",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 14.sp
+                            )
+                        } else if (!nfcHelper.isNFCEnabled()) {
+                            Text(
+                                text = "Please enable NFC in device settings",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 14.sp
+                            )
+                        } else {
+                            if (isNfcScanning) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Hold NFC tag near device...",
+                                        fontSize = 14.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    TextButton(onClick = { isNfcScanning = false }) {
+                                        Text("Cancel")
+                                    }
+                                }
+                            } else {
+                                Button(
+                                    onClick = startNfcScan,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.LocationOn, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Scan NFC Tag")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.weight(1f))
-            
+
             Button(
                 onClick = {
                     if (name.isNotBlank() && selectedCamper != null && selectedLocation != null) {
@@ -384,7 +514,8 @@ fun AddItemScreen(
                                     camperId = selectedCamper!!.id,
                                     locationId = selectedLocation!!.id,
                                     photoPath = currentPhotoFile?.absolutePath,
-                                    year = Constants.CURRENT_YEAR
+                                    year = Constants.CURRENT_YEAR,
+                                    nfcUid = nfcUid
                                 )
                             }
                             isSaving = false

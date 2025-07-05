@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -342,6 +343,10 @@ fun MainScreen() {
             val intent = Intent(context, EventCalendarActivity::class.java)
             context.startActivity(intent)
         },
+        onCrapTap = {
+            val intent = Intent(context, CrapTapActivity::class.java)
+            context.startActivity(intent)
+        },
         onExportData = {
             val fileName = "CampCrap_${Constants.CURRENT_YEAR}_${SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())}.xlsx"
             activity.exportLauncher.launch(fileName)
@@ -384,6 +389,7 @@ fun LandingScreen(
     onViewLocations: () -> Unit,
     onViewCrap: () -> Unit,
     onViewCalendar: () -> Unit,
+    onCrapTap: () -> Unit,
     onExportData: () -> Unit,
     onImportData: () -> Unit
 ) {
@@ -531,32 +537,58 @@ fun LandingScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Button(
-                onClick = onCamperAction,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            // Main navigation buttons in two columns
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(if (!peopleExist) "Add Your First Camper" else "View Campers")
+                Button(
+                    onClick = onCamperAction,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = 4.dp)
+                ) {
+                    Text(if (!peopleExist) "Add Your First Camper" else "View Campers")
+                }
+
+                Button(
+                    onClick = onViewLocations,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = 4.dp)
+                ) {
+                    Text("View Locations")
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onViewCrap,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = 4.dp)
+                ) {
+                    Text("View Crap")
+                }
+
+                Button(
+                    onClick = onViewCalendar,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = 4.dp)
+                ) {
+                    Text("Event Calendar")
+                }
             }
 
             Button(
-                onClick = onViewLocations,
+                onClick = onCrapTap,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Text("View Locations")
-            }
-
-            Button(
-                onClick = onViewCrap,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Text("View Crap")
-            }
-
-            Button(
-                onClick = onViewCalendar,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Text("Event Calendar")
+                Text("🏷️ Crap Tap")
             }
 
             // Export/Import section
@@ -611,6 +643,7 @@ fun LandingScreenPreview() {
             onViewLocations = {},
             onViewCrap = {},
             onViewCalendar = {},
+            onCrapTap = {},
             onExportData = {},
             onImportData = {}
         )

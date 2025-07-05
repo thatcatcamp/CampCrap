@@ -48,10 +48,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
-import com.capricallctx.campcrap.ui.theme.CampCrapTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.capricallctx.campcrap.ui.theme.CampCrapTheme
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -61,6 +61,8 @@ class EditItemActivity : ComponentActivity() {
     private lateinit var photoUri: Uri
     private var photoFile: File? = null
     private var onPhotoTaken: (() -> Unit)? = null
+    private var nfcHelper: NFCHelper? = null
+    private var onNfcScanned: ((String) -> Unit)? = null
     
     private val requestCameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -87,6 +89,9 @@ class EditItemActivity : ComponentActivity() {
             return
         }
         
+        // Initialize NFC
+        nfcHelper = NFCHelper(this)
+        
         setContent {
             CampCrapTheme {
                 EditItemScreen(
@@ -95,6 +100,10 @@ class EditItemActivity : ComponentActivity() {
                     onRequestCamera = { callback -> 
                         onPhotoTaken = callback
                         requestCameraPermission() 
+                    },
+                    onRequestNfcScan = { callback ->
+                        onNfcScanned = callback
+                        requestNfcScan()
                     },
                     getPhotoFile = { photoFile },
                     onItemSaved = { finish() }
@@ -127,6 +136,38 @@ class EditItemActivity : ComponentActivity() {
         )
         takePictureLauncher.launch(photoUri)
     }
+    
+    private fun requestNfcScan() {
+        nfcHelper?.let { helper ->
+            if (!helper.isNFCSupported()) {
+                // Show error message - NFC not supported
+                return
+            }
+            if (!helper.isNFCEnabled()) {
+                // Show error message - NFC not enabled
+                return
+            }
+            
+            helper.onTagScanned = { uid ->
+                onNfcScanned?.invoke(uid)
+            }
+        }
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        nfcHelper?.enableForegroundDispatch()
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        nfcHelper?.disableForegroundDispatch()
+    }
+    
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        nfcHelper?.handleNewIntent(intent)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -135,6 +176,7 @@ fun EditItemScreen(
     itemId: Long,
     onBack: () -> Unit,
     onRequestCamera: (((() -> Unit)) -> Unit),
+    onRequestNfcScan: ((String) -> Unit) -> Unit,
     getPhotoFile: () -> File?,
     onItemSaved: () -> Unit
 ) {
@@ -158,6 +200,8 @@ fun EditItemScreen(
     var photoRefresh by remember { mutableStateOf(0) }
     var originalPhotoPath by remember { mutableStateOf<String?>(null) }
     var removalStatus by remember { mutableStateOf("active") }
+    var nfcUid by remember { mutableStateOf<String?>(null) }
+    var lastSighting by remember { mutableStateOf<String?>(null) }
     
     // Update photo file when photoRefresh changes
     LaunchedEffect(photoRefresh) {
@@ -180,6 +224,8 @@ fun EditItemScreen(
                     description = it.description
                     originalPhotoPath = it.photoPath
                     removalStatus = it.removalStatus
+                    nfcUid = it.nfcUid
+                    lastSighting = it.lastSighting
                     if (it.photoPath != null) {
                         currentPhotoFile = File(it.photoPath)
                     }
@@ -426,6 +472,62 @@ fun EditItemScreen(
                     }
                 }
                 
+                // NFC Section
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "NFC Tag",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        if (nfcUid != null) {
+                            Text(
+                                text = "Current NFC UID: $nfcUid",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        
+                        if (lastSighting != null) {
+                            val sightingDate = try {
+                                val timestamp = lastSighting!!.toLong()
+                                java.text.SimpleDateFormat("MMM dd, yyyy 'at' h:mm a", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+                            } catch (e: Exception) {
+                                "Unknown"
+                            }
+                            Text(
+                                text = "Last seen: $sightingDate",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        
+                        Button(
+                            onClick = { 
+                                onRequestNfcScan { scannedUid ->
+                                    nfcUid = scannedUid
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (nfcUid != null) "Update NFC Tag" else "Scan NFC Tag")
+                        }
+                    }
+                }
+                
                 // Removal section
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -529,7 +631,8 @@ fun EditItemScreen(
                                         camperId = selectedCamper!!.id,
                                         locationId = selectedLocation!!.id,
                                         photoPath = currentPhotoFile?.absolutePath,
-                                        removalStatus = removalStatus
+                                        removalStatus = removalStatus,
+                                        nfcUid = nfcUid
                                     )
                                 }
                                 isSaving = false

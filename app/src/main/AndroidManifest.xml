@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" 
         tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -66,11 +68,26 @@
             android:name=".AddItemActivity"
             android:exported="false"
             android:label="Add Item"
-            android:theme="@style/Theme.CampCrap" />
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.CampCrap">
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED"/>
+                <action android:name="android.nfc.action.TAG_DISCOVERED"/>
+                <action android:name="android.nfc.action.TECH_DISCOVERED"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
         <activity
             android:name=".EditItemActivity"
             android:exported="false"
             android:label="Edit Item"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.CampCrap" />
+        <activity
+            android:name=".CrapTapActivity"
+            android:exported="false"
+            android:label="Crap Tap"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.CampCrap" />
         <activity
             android:name=".EventCalendarActivity"

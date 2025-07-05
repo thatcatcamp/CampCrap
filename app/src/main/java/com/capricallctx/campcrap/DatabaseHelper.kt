@@ -25,7 +25,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
     
     companion object {
         private const val DATABASE_NAME = "campcrap.db"
-        private const val DATABASE_VERSION = 7
+        private const val DATABASE_VERSION = 9
         
         // People table
         const val TABLE_PEOPLE = "people"
@@ -63,6 +63,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         const val ITEM_YEAR = "year"
         const val ITEM_CREATED_DATE = "created_date"
         const val ITEM_REMOVAL_STATUS = "removal_status"
+        const val ITEM_NFC_UID = "nfc_uid"
+        const val ITEM_LAST_SIGHTING = "last_sighting"
     }
     
     override fun onCreate(db: SQLiteDatabase) {
@@ -110,6 +112,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                 $ITEM_YEAR TEXT NOT NULL,
                 $ITEM_CREATED_DATE TEXT NOT NULL,
                 $ITEM_REMOVAL_STATUS TEXT DEFAULT 'active',
+                $ITEM_NFC_UID TEXT,
+                $ITEM_LAST_SIGHTING TEXT,
                 FOREIGN KEY($ITEM_CAMPER_ID) REFERENCES $TABLE_PEOPLE($COLUMN_ID),
                 FOREIGN KEY($ITEM_LOCATION_ID) REFERENCES $TABLE_LOCATIONS($LOCATION_ID)
             )
@@ -167,6 +171,14 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             db.execSQL("ALTER TABLE $TABLE_PEOPLE ADD COLUMN $COLUMN_HAS_TICKET_CURRENT_YEAR INTEGER DEFAULT 0")
             db.execSQL("ALTER TABLE $TABLE_PEOPLE ADD COLUMN $COLUMN_PAID_DUES_CURRENT_YEAR INTEGER DEFAULT 0")
             db.execSQL("ALTER TABLE $TABLE_PEOPLE ADD COLUMN $COLUMN_PHOTO_PATH TEXT")
+        }
+        // Add NFC UID column if upgrading from version 7
+        if (oldVersion < 8) {
+            db.execSQL("ALTER TABLE $TABLE_ITEMS ADD COLUMN $ITEM_NFC_UID TEXT")
+        }
+        // Add last sighting column if upgrading from version 8
+        if (oldVersion < 9) {
+            db.execSQL("ALTER TABLE $TABLE_ITEMS ADD COLUMN $ITEM_LAST_SIGHTING TEXT")
         }
     }
     
@@ -565,7 +577,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         camperId: Long,
         locationId: Long,
         photoPath: String? = null,
-        year: String
+        year: String,
+        nfcUid: String? = null
     ): Long {
         val db = writableDatabase
         val values = ContentValues().apply {
@@ -576,6 +589,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             put(ITEM_PHOTO_PATH, photoPath)
             put(ITEM_YEAR, year)
             put(ITEM_CREATED_DATE, System.currentTimeMillis().toString())
+            put(ITEM_NFC_UID, nfcUid)
         }
         return db.insert(TABLE_ITEMS, null, values)
     }
@@ -594,6 +608,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                 i.$ITEM_YEAR,
                 i.$ITEM_CREATED_DATE,
                 i.$ITEM_REMOVAL_STATUS,
+                i.$ITEM_NFC_UID,
+                i.$ITEM_LAST_SIGHTING,
                 p.$COLUMN_NAME as camper_name,
                 l.$LOCATION_NAME as location_name
             FROM $TABLE_ITEMS i
@@ -617,7 +633,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                         createdDate = it.getString(it.getColumnIndexOrThrow(ITEM_CREATED_DATE)),
                         camperName = it.getString(it.getColumnIndexOrThrow("camper_name")) ?: "",
                         locationName = it.getString(it.getColumnIndexOrThrow("location_name")) ?: "",
-                        removalStatus = it.getString(it.getColumnIndexOrThrow(ITEM_REMOVAL_STATUS)) ?: "active"
+                        removalStatus = it.getString(it.getColumnIndexOrThrow(ITEM_REMOVAL_STATUS)) ?: "active",
+                        nfcUid = it.getString(it.getColumnIndexOrThrow(ITEM_NFC_UID)),
+                        lastSighting = it.getString(it.getColumnIndexOrThrow(ITEM_LAST_SIGHTING))
                     )
                 )
             }
@@ -639,6 +657,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                 i.$ITEM_YEAR,
                 i.$ITEM_CREATED_DATE,
                 i.$ITEM_REMOVAL_STATUS,
+                i.$ITEM_NFC_UID,
+                i.$ITEM_LAST_SIGHTING,
                 p.$COLUMN_NAME as camper_name,
                 l.$LOCATION_NAME as location_name
             FROM $TABLE_ITEMS i
@@ -662,7 +682,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                         createdDate = it.getString(it.getColumnIndexOrThrow(ITEM_CREATED_DATE)),
                         camperName = it.getString(it.getColumnIndexOrThrow("camper_name")) ?: "",
                         locationName = it.getString(it.getColumnIndexOrThrow("location_name")) ?: "",
-                        removalStatus = it.getString(it.getColumnIndexOrThrow(ITEM_REMOVAL_STATUS)) ?: "active"
+                        removalStatus = it.getString(it.getColumnIndexOrThrow(ITEM_REMOVAL_STATUS)) ?: "active",
+                        nfcUid = it.getString(it.getColumnIndexOrThrow(ITEM_NFC_UID)),
+                        lastSighting = it.getString(it.getColumnIndexOrThrow(ITEM_LAST_SIGHTING))
                     )
                 )
             }
@@ -716,7 +738,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         camperId: Long,
         locationId: Long,
         photoPath: String? = null,
-        removalStatus: String? = null
+        removalStatus: String? = null,
+        nfcUid: String? = null
     ): Boolean {
         val db = writableDatabase
         val values = ContentValues().apply {
@@ -729,6 +752,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             }
             if (removalStatus != null) {
                 put(ITEM_REMOVAL_STATUS, removalStatus)
+            }
+            if (nfcUid != null) {
+                put(ITEM_NFC_UID, nfcUid)
             }
         }
         
@@ -749,6 +775,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                 i.$ITEM_YEAR,
                 i.$ITEM_CREATED_DATE,
                 i.$ITEM_REMOVAL_STATUS,
+                i.$ITEM_NFC_UID,
+                i.$ITEM_LAST_SIGHTING,
                 p.$COLUMN_NAME as camper_name,
                 l.$LOCATION_NAME as location_name
             FROM $TABLE_ITEMS i
@@ -770,11 +798,67 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                     createdDate = it.getString(it.getColumnIndexOrThrow(ITEM_CREATED_DATE)),
                     camperName = it.getString(it.getColumnIndexOrThrow("camper_name")) ?: "",
                     locationName = it.getString(it.getColumnIndexOrThrow("location_name")) ?: "",
-                    removalStatus = it.getString(it.getColumnIndexOrThrow(ITEM_REMOVAL_STATUS)) ?: "active"
+                    removalStatus = it.getString(it.getColumnIndexOrThrow(ITEM_REMOVAL_STATUS)) ?: "active",
+                    nfcUid = it.getString(it.getColumnIndexOrThrow(ITEM_NFC_UID))
                 )
             }
         }
         return null
+    }
+    
+    fun getItemByNfcUid(nfcUid: String): Item? {
+        val db = readableDatabase
+        val cursor = db.rawQuery("""
+            SELECT 
+                i.$ITEM_ID,
+                i.$ITEM_NAME,
+                i.$ITEM_DESCRIPTION,
+                i.$ITEM_CAMPER_ID,
+                i.$ITEM_LOCATION_ID,
+                i.$ITEM_PHOTO_PATH,
+                i.$ITEM_YEAR,
+                i.$ITEM_CREATED_DATE,
+                i.$ITEM_REMOVAL_STATUS,
+                i.$ITEM_NFC_UID,
+                i.$ITEM_LAST_SIGHTING,
+                p.$COLUMN_NAME as camper_name,
+                l.$LOCATION_NAME as location_name
+            FROM $TABLE_ITEMS i
+            LEFT JOIN $TABLE_PEOPLE p ON i.$ITEM_CAMPER_ID = p.$COLUMN_ID
+            LEFT JOIN $TABLE_LOCATIONS l ON i.$ITEM_LOCATION_ID = l.$LOCATION_ID
+            WHERE i.$ITEM_NFC_UID = ? AND i.$ITEM_REMOVAL_STATUS = 'active'
+        """, arrayOf(nfcUid))
+        
+        cursor.use {
+            if (it.moveToFirst()) {
+                return Item(
+                    id = it.getLong(it.getColumnIndexOrThrow(ITEM_ID)),
+                    name = it.getString(it.getColumnIndexOrThrow(ITEM_NAME)),
+                    description = it.getString(it.getColumnIndexOrThrow(ITEM_DESCRIPTION)) ?: "",
+                    camperId = it.getLong(it.getColumnIndexOrThrow(ITEM_CAMPER_ID)),
+                    locationId = it.getLong(it.getColumnIndexOrThrow(ITEM_LOCATION_ID)),
+                    photoPath = it.getString(it.getColumnIndexOrThrow(ITEM_PHOTO_PATH)),
+                    year = it.getString(it.getColumnIndexOrThrow(ITEM_YEAR)),
+                    createdDate = it.getString(it.getColumnIndexOrThrow(ITEM_CREATED_DATE)),
+                    camperName = it.getString(it.getColumnIndexOrThrow("camper_name")) ?: "",
+                    locationName = it.getString(it.getColumnIndexOrThrow("location_name")) ?: "",
+                    removalStatus = it.getString(it.getColumnIndexOrThrow(ITEM_REMOVAL_STATUS)) ?: "active",
+                    nfcUid = it.getString(it.getColumnIndexOrThrow(ITEM_NFC_UID)),
+                    lastSighting = it.getString(it.getColumnIndexOrThrow(ITEM_LAST_SIGHTING))
+                )
+            }
+        }
+        return null
+    }
+    
+    fun recordSighting(itemId: Long): Boolean {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(ITEM_LAST_SIGHTING, System.currentTimeMillis().toString())
+        }
+        
+        val result = db.update(TABLE_ITEMS, values, "$ITEM_ID = ?", arrayOf(itemId.toString()))
+        return result > 0
     }
 }
 
@@ -814,5 +898,7 @@ data class Item(
     val createdDate: String,
     val camperName: String,
     val locationName: String,
-    val removalStatus: String = "active"
+    val removalStatus: String = "active",
+    val nfcUid: String? = null,
+    val lastSighting: String? = null
 )
