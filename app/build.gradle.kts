@@ -63,7 +63,12 @@ dependencies {
     implementation(libs.google.auth.library)
     implementation(libs.play.services.auth)
     implementation(libs.coil.compose)
-    
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+    implementation("androidx.compose.material:material-icons-extended:1.6.8")
+
     // Apache POI for Excel support
     implementation("org.apache.poi:poi:5.2.4")
     implementation("org.apache.poi:poi-ooxml:5.2.4")

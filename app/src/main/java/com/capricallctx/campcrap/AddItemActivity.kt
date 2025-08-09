@@ -34,6 +34,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.camera.view.PreviewView
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,6 +68,8 @@ class AddItemActivity : ComponentActivity() {
     private var onPhotoTaken: (() -> Unit)? = null
     private lateinit var nfcHelper: NFCHelper
     private var onNfcScanned: ((String) -> Unit)? = null
+    private lateinit var qrCodeHelper: QRCodeHelper
+    private var onQrCodeScanned: ((String) -> Unit)? = null
 
     private val requestCameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -90,6 +96,10 @@ class AddItemActivity : ComponentActivity() {
             onNfcScanned?.invoke(uid)
         }
 
+        qrCodeHelper = QRCodeHelper(this) { qrCode ->
+            onQrCodeScanned?.invoke(qrCode)
+        }
+
         setContent {
             CampCrapTheme {
                 AddItemScreen(
@@ -103,6 +113,10 @@ class AddItemActivity : ComponentActivity() {
                     nfcHelper = nfcHelper,
                     onNfcScanned = { callback ->
                         onNfcScanned = callback
+                    },
+                    qrCodeHelper = qrCodeHelper,
+                    onQrCodeScanned = { callback ->
+                        onQrCodeScanned = callback
                     }
                 )
             }
@@ -142,6 +156,7 @@ class AddItemActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         nfcHelper.disableForegroundDispatch()
+        qrCodeHelper.stopScanning()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -158,11 +173,14 @@ fun AddItemScreen(
     getPhotoFile: () -> File?,
     onItemSaved: () -> Unit,
     nfcHelper: NFCHelper,
-    onNfcScanned: ((String) -> Unit) -> Unit
+    onNfcScanned: ((String) -> Unit) -> Unit,
+    qrCodeHelper: QRCodeHelper,
+    onQrCodeScanned: ((String) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dbHelper = remember { DatabaseHelper(context) }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -177,8 +195,9 @@ fun AddItemScreen(
     var locations by remember { mutableStateOf<List<Location>>(emptyList()) }
     var currentPhotoFile by remember { mutableStateOf<File?>(null) }
     var photoRefresh by remember { mutableStateOf(0) }
-    var nfcUid by remember { mutableStateOf<String?>(null) }
+    var itemId by remember { mutableStateOf<String?>(null) }
     var isNfcScanning by remember { mutableStateOf(false) }
+    var isQrScanning by remember { mutableStateOf(false) }
 
     // Update photo file when photoRefresh changes
     LaunchedEffect(photoRefresh) {
@@ -196,10 +215,18 @@ fun AddItemScreen(
             if (nfcHelper.isNFCEnabled()) {
                 isNfcScanning = true
                 onNfcScanned { uid ->
-                    nfcUid = uid
+                    itemId = uid
                     isNfcScanning = false
                 }
             }
+        }
+    }
+
+    val startQrScan = {
+        isQrScanning = true
+        onQrCodeScanned { qrCode ->
+            itemId = qrCode
+            isQrScanning = false
         }
     }
 
@@ -261,6 +288,26 @@ fun AddItemScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            if (isQrScanning) {
+                AndroidView(
+                    factory = { context ->
+                        PreviewView(context).apply {
+                            this.scaleType = PreviewView.ScaleType.FILL_CENTER
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    update = {
+                        qrCodeHelper.startScanning(it, lifecycleOwner)
+                    }
+                )
+                Button(onClick = { isQrScanning = false }) {
+                    Text("Cancel QR Scan")
+                }
+            }
 
             if (showSuccessMessage) {
                 Card(
@@ -414,7 +461,7 @@ fun AddItemScreen(
                 }
             }
 
-            // NFC section
+            // Tag section
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
@@ -426,14 +473,14 @@ fun AddItemScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "NFC Tag",
+                        text = "Item Tag",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    if (nfcUid != null) {
+                    if (itemId != null) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -442,7 +489,7 @@ fun AddItemScreen(
                                 modifier = Modifier.padding(12.dp)
                             ) {
                                 Text(
-                                    text = "NFC UID: $nfcUid",
+                                    text = "Item ID: $itemId",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -450,49 +497,47 @@ fun AddItemScreen(
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { nfcUid = null }) {
-                            Text("Clear NFC")
+                        TextButton(onClick = { itemId = null }) {
+                            Text("Clear Tag")
                         }
                     } else {
-                        if (!nfcHelper.isNFCSupported()) {
-                            Text(
-                                text = "NFC not supported on this device",
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 14.sp
-                            )
-                        } else if (!nfcHelper.isNFCEnabled()) {
-                            Text(
-                                text = "Please enable NFC in device settings",
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 14.sp
-                            )
-                        } else {
-                            if (isNfcScanning) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = "Hold NFC tag near device...",
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    TextButton(onClick = { isNfcScanning = false }) {
-                                        Text("Cancel")
-                                    }
-                                }
-                            } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (nfcHelper.isNFCSupported()) {
                                 Button(
                                     onClick = startNfcScan,
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(Icons.Default.LocationOn, contentDescription = null)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text("Scan NFC Tag")
+                                }
+                            }
+                            Button(
+                                onClick = startQrScan,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Scan QR Code")
+                            }
+                        }
+                        if (isNfcScanning) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Hold NFC tag near device...",
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                TextButton(onClick = { isNfcScanning = false }) {
+                                    Text("Cancel")
                                 }
                             }
                         }
@@ -515,7 +560,7 @@ fun AddItemScreen(
                                     locationId = selectedLocation!!.id,
                                     photoPath = currentPhotoFile?.absolutePath,
                                     year = Constants.CURRENT_YEAR,
-                                    nfcUid = nfcUid
+                                    nfcUid = itemId
                                 )
                             }
                             isSaving = false
