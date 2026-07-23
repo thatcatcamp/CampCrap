@@ -11,19 +11,19 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: '17'
         distribution: 'temurin'
 
     - name: Setup Gradle
-      uses: gradle/gradle-build-action@v2
+      uses: gradle/actions/setup-gradle@v6
 
     - name: Cache Gradle packages
-      uses: actions/cache@v3
+      uses: actions/cache@v6
       with:
         path: |
           ~/.gradle/caches
@@ -60,14 +60,19 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
 
+    - name: Rename APK with version
+      run: |
+        cp app/build/outputs/apk/release/app-release.apk "CampCrap-${{ steps.get_version.outputs.APP_VERSION }}.apk"
+
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v3
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.ref }}
-        release_name: CampCrap ${{ steps.get_version.outputs.TAG_VERSION }}
+        name: CampCrap ${{ steps.get_version.outputs.TAG_VERSION }}
+        files: CampCrap-${{ steps.get_version.outputs.APP_VERSION }}.apk
         body: |
           ## 🏕️ CampCrap Release ${{ steps.get_version.outputs.TAG_VERSION }}
 
@@ -103,13 +108,3 @@ jobs:
           🤖 **Automated Release** - Built with GitHub Actions
         draft: false
         prerelease: false
-
-    - name: Upload Release APK
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: app/build/outputs/apk/release/app-release.apk
-        asset_name: CampCrap-${{ steps.get_version.outputs.APP_VERSION }}.apk
-        asset_content_type: application/vnd.android.package-archive

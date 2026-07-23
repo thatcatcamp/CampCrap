@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CampCrap is an Android application built with Kotlin and Jetpack Compose. The app uses a standard Android project structure with:
 - Package name: `com.capricallctx.campcrap`
-- Min SDK: 24, Target SDK: 35
-- Kotlin version: 2.0.21
-- Compose BOM: 2024.09.00
+- Min SDK: 26, Target SDK: 37
+- Kotlin version: 2.4.0
+- Compose BOM: 2026.06.01
 
 ## Build Commands
 

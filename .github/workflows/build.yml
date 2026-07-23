@@ -15,19 +15,19 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: '17'
         distribution: 'temurin'
 
     - name: Setup Gradle
-      uses: gradle/gradle-build-action@v2
+      uses: gradle/actions/setup-gradle@v6
 
     - name: Cache Gradle packages
-      uses: actions/cache@v3
+      uses: actions/cache@v6
       with:
         path: |
           ~/.gradle/caches
@@ -70,19 +70,19 @@ jobs:
         cp app/build/outputs/apk/release/*.apk dist/CampCrap-release-signed-${{ env.VERSION_NAME }}.apk
 
     - name: Upload versioned debug APK
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: debug-apk-${{ github.run_number }}
         path: dist/CampCrap-debug-*.apk
 
     - name: Upload versioned release APK
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: release-apk-${{ github.run_number }}
         path: dist/CampCrap-release-*.apk
 
     - name: Upload signed APK separately
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: signed-release-apk-${{ github.run_number }}
         path: app/build/outputs/apk/release/app-release.apk
@@ -115,12 +115,13 @@ jobs:
     - name: Create GitHub Release
       if: github.ref == 'refs/heads/main'
       id: create_release
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v3
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: v${{ env.VERSION_NAME }}
-        release_name: CampCrap v${{ env.VERSION_NAME }}
+        name: CampCrap v${{ env.VERSION_NAME }}
+        files: dist/CampCrap-release-signed-${{ env.VERSION_NAME }}.apk
         body: |
           ## 🏕️ CampCrap Release v${{ env.VERSION_NAME }}
 
@@ -166,8 +167,8 @@ jobs:
 
           ### Technical Details
           - **Signed APK:** Production-ready with developer certificate
-          - **Min Android:** API 24 (Android 7.0)
-          - **Target Android:** API 35 (Android 15)
+          - **Min Android:** API 26 (Android 8.0)
+          - **Target Android:** API 37
           - **Architecture:** ARM64, ARM32, x86_64
 
           ---
@@ -177,23 +178,12 @@ jobs:
         draft: false
         prerelease: false
 
-    - name: Upload Release APK
-      if: github.ref == 'refs/heads/main'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: app/build/outputs/apk/release/app-release.apk
-        asset_name: CampCrap-v${{ env.VERSION_NAME }}.apk
-        asset_content_type: application/vnd.android.package-archive
-
     - name: Update build summary with release info
       if: github.ref == 'refs/heads/main'
       run: |
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🎉 GitHub Release Created" >> $GITHUB_STEP_SUMMARY
         echo "- **Release Tag:** v${{ env.VERSION_NAME }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Release URL:** ${{ steps.create_release.outputs.html_url }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Download APK:** [CampCrap-v${{ env.VERSION_NAME }}.apk](${{ steps.create_release.outputs.html_url }})" >> $GITHUB_STEP_SUMMARY
+        echo "- **Release URL:** ${{ steps.create_release.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Download APK:** [CampCrap-release-signed-${{ env.VERSION_NAME }}.apk](${{ steps.create_release.outputs.url }})" >> $GITHUB_STEP_SUMMARY
         echo "- **Auto-Release:** Triggered from main branch build ✅" >> $GITHUB_STEP_SUMMARY

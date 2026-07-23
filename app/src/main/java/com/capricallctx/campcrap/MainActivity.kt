@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 CAT Camp
+ * Copyright 2026 CAT Camp
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,6 +64,7 @@ import com.capricallctx.campcrap.ui.theme.CampCrapTheme
 import kotlinx.coroutines.launch
 import android.util.Log
 import android.content.pm.PackageManager
+import android.os.Build
 import java.security.MessageDigest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
@@ -278,8 +279,19 @@ class MainActivity : ComponentActivity() {
 
     private fun logSHA1Fingerprint() {
         try {
-            val packageInfo = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
-            packageInfo.signatures?.forEach { signature ->
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val packageInfo = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                packageInfo.signingInfo?.let { signingInfo ->
+                    if (signingInfo.hasMultipleSigners()) signingInfo.apkContentsSigners
+                    else signingInfo.signingCertificateHistory
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val packageInfo = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+                @Suppress("DEPRECATION")
+                packageInfo.signatures
+            }
+            signatures?.forEach { signature ->
                 val md = MessageDigest.getInstance("SHA1")
                 md.update(signature.toByteArray())
                 val digest = md.digest()
@@ -614,7 +626,7 @@ fun LandingScreen(
         }
 
         Text(
-            text = "Copyright 2025 © CAT Camp",
+            text = "Copyright 2026 © CAT Camp",
             fontSize = 16.sp,
             color = Color.White,
             modifier = Modifier

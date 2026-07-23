@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 CAT Camp
+ * Copyright 2026 CAT Camp
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Person
@@ -105,7 +105,7 @@ fun EventCalendarScreen(onBack: () -> Unit) {
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -363,9 +363,9 @@ fun calculateEventCalendar(dbHelper: DatabaseHelper): List<DayInfo> {
     if (earliestDate == null || latestDate == null) return emptyList()
     
     val dayInfoList = mutableListOf<DayInfo>()
-    val current = Calendar.getInstance().apply { time = earliestDate!!.time }
-    
-    while (current.timeInMillis <= latestDate!!.timeInMillis) {
+    val current = Calendar.getInstance().apply { time = earliestDate.time }
+
+    while (current.timeInMillis <= latestDate.timeInMillis) {
         val currentDateStr = dateFormat.format(current.time)
         val dayOfWeek = dayFormat.format(current.time)
         

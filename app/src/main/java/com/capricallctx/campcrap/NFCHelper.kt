@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 CAT Camp
+ * Copyright 2026 CAT Camp
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.Ndef
 import android.nfc.tech.NdefFormatable
+import android.os.Build
 import android.util.Log
 
 class NFCHelper(private val activity: Activity) {
@@ -89,7 +90,12 @@ class NFCHelper(private val activity: Activity) {
             NfcAdapter.ACTION_TAG_DISCOVERED == action ||
             NfcAdapter.ACTION_TECH_DISCOVERED == action) {
             
-            val tag = intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
+            val tag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
+            }
             tag?.let { processTag(it) }
         }
     }

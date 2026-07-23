@@ -74,8 +74,8 @@ Day-by-day attendance tracking with expandable details for arrivals and departur
 ## Technical Details
 
 ### Architecture
-- **Platform**: Android (minSDK 26, targetSDK 35)
-- **Language**: Kotlin 2.0.21
+- **Platform**: Android (minSDK 26, targetSDK 37)
+- **Language**: Kotlin 2.4.0
 - **UI Framework**: Jetpack Compose with Material 3
 - **Database**: SQLite with custom DatabaseHelper
 - **Camera**: Android Camera API with FileProvider
@@ -102,7 +102,7 @@ Day-by-day attendance tracking with expandable details for arrivals and departur
 ### Prerequisites
 - Android Studio
 - Android SDK (API 26+)
-- Kotlin 2.0.21+
+- Kotlin 2.4.0+
 
 ### Building
 ```bash
@@ -140,7 +140,7 @@ The app automatically calculates water needs based on:
 ## License
 
 ```
-Copyright 2025 CAT Camp
+Copyright 2026 CAT Camp
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
