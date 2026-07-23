@@ -11,7 +11,7 @@ composeBom = "2026.06.01"
 googleApiClient = "2.9.0"
 googleDriveApi = "v3-rev20260428-2.0.0"
 googleAuthLibrary = "1.48.0"
-playServicesAuth = "21.4.0"
+playServicesAuth = "21.6.0"
 coil = "2.7.0"
 
 [libraries]
