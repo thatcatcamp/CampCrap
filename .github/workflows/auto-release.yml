@@ -116,8 +116,21 @@ jobs:
         serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
         packageName: com.capricallctx.campcrap
         releaseFiles: ${{ steps.sign_app.outputs.signedReleaseFile }}
-        track: internal # You can change this to 'alpha' or 'beta' for other pre-release tracks
+        tracks: internal # You can change this to 'alpha' or 'beta' for other pre-release tracks
         status: draft # Use 'draft' to create a draft release that you manually promote in the Play Console
+
+    - name: Warn if Play Store upload failed
+      if: steps.sign_app.outputs.signedReleaseFile != '' && steps.play_store_upload.outcome == 'failure'
+      run: |
+        echo "## ⚠️ Play Store Upload Failed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The signed AAB was **not** pushed to the Play Store internal track." >> $GITHUB_STEP_SUMMARY
+        echo "The GitHub Release below still has the AAB attached for manual upload." >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Common causes:" >> $GITHUB_STEP_SUMMARY
+        echo "- The app was never manually published/created in Google Play Console (the API can only add to an existing app, not create the first release)" >> $GITHUB_STEP_SUMMARY
+        echo "- The service account in \`PLAY_STORE_SERVICE_ACCOUNT_JSON\` hasn't been invited under Play Console > Users and permissions with access to this app" >> $GITHUB_STEP_SUMMARY
+        echo "- \`PLAY_STORE_SERVICE_ACCOUNT_JSON\` is missing, expired, or points to the wrong GCP project" >> $GITHUB_STEP_SUMMARY
 
     - name: Signing Report
       run: ./gradlew signingReport
