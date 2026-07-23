@@ -107,6 +107,9 @@ jobs:
             keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
             keyPassword: ${{ secrets.KEY_PASSWORD }}
 
+    # Requires: Android Publisher API enabled on the service account's GCP project, and
+    # the app's first release already uploaded manually via the Play Console web UI.
+    # See "CI / Release Notes" in CLAUDE.md if this starts failing again.
     - name: Upload AAB to Play Store (Internal Track)
       if: steps.sign_app.outputs.signedReleaseFile != ''
       continue-on-error: true

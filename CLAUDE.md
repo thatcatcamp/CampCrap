@@ -68,3 +68,23 @@ To use Google Drive functionality:
 1. Enable Google Drive API in Google Cloud Console
 2. Create OAuth 2.0 credentials for Android
 3. Add the OAuth client ID to the app configuration
+
+## CI / Release Notes
+
+- `versionCode`/`versionName` in `app/build.gradle.kts` are read from the
+  `VERSION_CODE`/`VERSION_NAME` env vars (set by all three workflows from
+  `github.run_number`), falling back to `2`/`"1.1"` for local builds. Do not
+  hardcode these again - every CI-built AAB used to ship as versionCode 1,
+  which is what caused Play Console to reject uploads with "version 1
+  already used" (fixed 2026-07-23).
+- Play Store auto-upload (`auto-release.yml`, internal track) needs the
+  Android Publisher API enabled on the GCP project behind
+  `PLAY_STORE_SERVICE_ACCOUNT_JSON` (project `138609127719` as of
+  2026-07-23), and the app's *first* release must be uploaded manually
+  through the Play Console web UI (as an AAB, not APK) before the API can
+  push further releases - it can't bootstrap an app's first release. Both
+  were done manually on 2026-07-23; if a *new* Play Store app/listing is
+  ever created for this package, redo both steps first.
+- If that upload step fails, it won't fail the workflow (`continue-on-error:
+  true`) - check the job summary for a "Play Store Upload Failed" section
+  instead of trusting the green checkmark.
