@@ -71,7 +71,7 @@ dependencies {
     implementation("org.apache.poi:poi-scratchpad:5.5.1")
 
     // Core library desugaring for Java 8+ APIs on older Android versions
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
